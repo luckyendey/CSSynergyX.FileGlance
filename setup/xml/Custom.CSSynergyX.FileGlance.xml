@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<customsolution code="CSSynergyX.FileGlance">
+  <developer code="777999">CSSynergyX</developer>
+  <title>CSSynergyX - File Glance</title>
+  <description>File Glance</description>
+  <batch>0</batch>
+  <scripts>
+    <createscript></createscript>
+    <updatescripts>
+    </updatescripts>
+  </scripts>
+  <applicationextensions>
+    <applicationextension application="WflRequest.aspx">
+      <class name="WflRequest" assembly="CSSynergyX.FileGlance.PageExtension"/>
+    </applicationextension>
+  </applicationextensions>
+</customsolution>
