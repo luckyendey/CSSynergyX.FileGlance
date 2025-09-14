@@ -23,7 +23,13 @@
       '#' + modalIds.body + '{position:absolute;top:44px;bottom:0;left:0;right:0;background:#fff;overflow:auto;padding:0;}',
       '#' + modalIds.body + ' .csfg-center{display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font:14px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}',
       '#' + modalIds.body + ' iframe{border:0;width:100%;height:100%;}',
-      '#' + modalIds.body + ' img{max-width:100%;height:auto;display:block;margin:0 auto;}'
+      '#' + modalIds.body + ' img{max-width:100%;height:auto;display:block;margin:0 auto;}',
+      /* Image viewer specific */
+      '#' + modalIds.body + ' .csfg-imgwrap{position:relative;width:100%;height:100%;overflow:auto;background:#fff;display:flex;align-items:center;justify-content:center;}',
+      '#' + modalIds.body + ' .csfg-imgwrap img{max-width:none;display:block;margin:0;}',
+      '#' + modalIds.body + ' .csfg-zoom-toolbar{position:absolute;top:8px;right:8px;background:rgba(248,250,252,.95);border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:4px;display:flex;gap:6px;z-index:2;}',
+      '#' + modalIds.body + ' .csfg-zoom-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;color:#111827;}',
+      '#' + modalIds.body + ' .csfg-zoom-toolbar button:hover{background:#f3f4f6;}'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -198,10 +204,75 @@
   }
 
   function viewAsImage(url) {
+    var wrap = document.createElement('div');
+    wrap.className = 'csfg-imgwrap';
+
+    var toolbar = document.createElement('div');
+    toolbar.className = 'csfg-zoom-toolbar';
+
+    function makeBtn(text, title, onclick){
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (title) b.title = title; b.onclick = onclick; return b;
+    }
+
     var img = document.createElement('img');
-    img.src = url;
-    img.alt = '';
-    setModalContent(img);
+    img.src = url; img.alt = '';
+
+    var scale = 1, natW = 0, natH = 0, fitScale = 1;
+
+    function applyScale(s){
+      scale = Math.max(0.05, Math.min(20, s));
+      img.style.width = (natW * scale) + 'px';
+      img.style.height = (natH * scale) + 'px';
+    }
+
+    function computeFit(){
+      var w = wrap.clientWidth || 1; var h = wrap.clientHeight || 1;
+      fitScale = Math.min(w / Math.max(1, natW), h / Math.max(1, natH));
+      if (!isFinite(fitScale) || fitScale <= 0) fitScale = 1;
+      return fitScale;
+    }
+
+    function centerScroll(){
+      var cw = wrap.clientWidth, ch = wrap.clientHeight;
+      var iw = natW * scale, ih = natH * scale;
+      wrap.scrollLeft = Math.max(0, (iw - cw) / 2);
+      wrap.scrollTop  = Math.max(0, (ih - ch) / 2);
+    }
+
+    function zoomIn(){ applyScale(scale * 1.25); }
+    function zoomOut(){ applyScale(scale / 1.25); }
+    function zoomFit(){ applyScale(computeFit()); centerScroll(); }
+    function zoomActual(){ applyScale(1); centerScroll(); }
+
+    toolbar.appendChild(makeBtn('-', 'Zoom out', zoomOut));
+    toolbar.appendChild(makeBtn('+', 'Zoom in', zoomIn));
+    toolbar.appendChild(makeBtn('100%', 'Actual size', zoomActual));
+    toolbar.appendChild(makeBtn('Fit', 'Fit to window', zoomFit));
+
+    var onResize = function(){ if (natW && natH) centerScroll(); };
+    window.addEventListener('resize', onResize);
+
+    img.onload = function(){
+      natW = img.naturalWidth || img.width; natH = img.naturalHeight || img.height;
+      computeFit();
+      applyScale(fitScale);
+      setTimeout(centerScroll, 0);
+    };
+
+    wrap.addEventListener('wheel', function(e){
+      if (!e.ctrlKey) return; e.preventDefault();
+      var delta = e.deltaY || 0; if (delta > 0) zoomOut(); else zoomIn();
+    }, { passive: false });
+
+    var observer = new MutationObserver(function(){
+      var body = document.getElementById(modalIds.body);
+      if (!body || !body.contains(wrap)) { window.removeEventListener('resize', onResize); observer.disconnect(); }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    wrap.appendChild(toolbar);
+    wrap.appendChild(img);
+    setModalContent(wrap);
     return Promise.resolve();
   }
 
@@ -234,14 +305,12 @@
   function findSiblingLinkCell(td){
     if (!td) return null;
     var link = null;
-    // Scan left siblings first (expected structure)
     var prev = td.previousElementSibling;
     while (prev) {
       link = prev.querySelector ? prev.querySelector('a') : null;
       if (link) return link;
       prev = prev.previousElementSibling;
     }
-    // Fallback: scan right siblings
     var next = td.nextElementSibling;
     while (next) {
       link = next.querySelector ? next.querySelector('a') : null;
