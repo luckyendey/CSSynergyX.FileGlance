@@ -18,30 +18,29 @@ A **page extension add-in** for Exact Synergy Enterprise that adds inline file v
 - **Responsive Design**: Modal viewer adapts to different screen sizes
 - **Fallback Support**: Uses CDN resources with local fallbacks for reliability
 
-## What It Does
-
-File Glance seamlessly integrates with Exact Synergy Enterprise by adding "View" buttons to attachment tables. When users click these buttons, files open in an elegant modal overlay with format-specific viewers - no downloads required.
-
-The solution consists of a C# page extension that automatically enhances WflRequest pages and a JavaScript library that handles the file preview functionality with support for images, documents, and spreadsheets.
-
 ## Installation
 
 ### Prerequisites
 - Exact Synergy Enterprise 503 or later
 - .NET Framework 4.7 or later
+- Administrator access to the Synergy server
 
-### Setup Steps
+### Installation Steps
 
-1. **Build the Extension**:
-   ```bash
-   # Open the solution in Visual Studio
-   # Build the project in Release mode
-   ```
+1. **Download the Extension:**
+   - Download the latest release from the [releases page](https://github.com/luckyendey/CSSynergyX.FileGlance/releases)
+   - Extract the downloaded ZIP file to a temporary folder
 
-2. **Deploy Files**:
-   - The compiled DLL will automatically copy to `C:\Exact Synergy Enterprise 503x\BIN\` (configured in post-build event)
-   - Copy the `setup/docs/` folder contents to your Synergy web server's `/docs/` directory
-   - Copy the `setup/xml/` folder contents to your Synergy web server's `/xml/` directory
+2. **Deploy Files:**
+   - Copy all extracted folders (`bin`, `docs`, `xml`) to your Exact Synergy Enterprise installation directory:
+     `C:\Exact Synergy Enterprise 503\`
+   - The folders will automatically merge with existing directories
+
+3. **Verify Installation:**
+   - Open one of the workflow request with attachments
+   - You should see **"View"** buttons next to the existing "Delete" buttons for each attachment
+   ![The new "View" button](misc/images/img01.png)
+   - Click a "View" button to test the file preview functionality
 
 ## Usage
 
@@ -57,27 +56,6 @@ Once installed, the extension automatically:
 - `-` or `_`: Zoom out  
 - `0`: Reset to actual size
 - `F`: Fit to window
-
-## File Structure
-
-```
-CSSynergyX.FileGlance/
-├── CSSynergyX.FileGlance.slnx              # Solution file
-├── LICENSE.txt                             # GPL v3 License
-├── README.md                              # This file
-├── CSSynergyX.FileGlance.PageExtension/   # C# Extension
-│   ├── WflRequest.cs                      # Main extension class
-│   ├── Properties/AssemblyInfo.cs         # Assembly metadata
-│   └── *.csproj                          # Project file
-└── setup/                                 # Deployment files
-    ├── docs/                              # Web assets
-    │   ├── CSSynergyX.FileGlance.js      # Main JavaScript library
-    │   ├── docx-preview.js               # DOCX viewer
-    │   ├── jszip.min.js                  # ZIP handling
-    │   └── xlsx.full.min.js              # Excel processing
-    └── xml/
-        └── Custom.CSSynergyX.FileGlance.xml # Synergy configuration
-```
 
 ## Browser Compatibility
 
