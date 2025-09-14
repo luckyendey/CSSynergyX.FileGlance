@@ -1,4 +1,4 @@
-# CSSynergyX File Glance
+# SynergyX File Glance
 
 A **page extension add-in** for Exact Synergy Enterprise that adds inline file viewing capabilities to attachment tables. This extension enhances the user experience by allowing users to preview documents directly within the Synergy interface without downloading them.
 
