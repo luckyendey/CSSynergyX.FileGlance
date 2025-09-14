@@ -17,7 +17,7 @@
         },
         cdn: {
             jszip: 'https://unpkg.com/jszip/dist/jszip.min.js',
-            docxjs: 'https://unpkg.com/docx-preview@0.4.0/dist/docx-preview.min.js',
+            docxjs: 'https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.min.js',
             xlsx: 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
         }
     };
