@@ -1,80 +1,117 @@
 (function (window, document) {
-  // --- Helpers to create a simple modal viewer ---
-  var modalIds = {
-    overlay: 'csfg-overlay',
-    modal: 'csfg-modal',
-    header: 'csfg-header',
-    title: 'csfg-title',
-    close: 'csfg-close',
-    body: 'csfg-body'
+  // --- Configuration & state ---
+  var CFG = {
+    ids: {
+      overlay: 'csfg-overlay',
+      modal: 'csfg-modal',
+      header: 'csfg-header',
+      title: 'csfg-title',
+      close: 'csfg-close',
+      body: 'csfg-body',
+      styles: 'csfg-styles'
+    },
+    z: {
+      overlay: 2147483000,
+      modal: 2147483001,
+      toolbar: 2147483002
+    },
+    cdn: {
+      jszip: 'https://unpkg.com/jszip/dist/jszip.min.js',
+      docxjs: 'https://unpkg.com/docx-preview@0.4.0/dist/docx-preview.min.js',
+      xlsx: 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+    }
   };
 
+  var currentViewer = null; // { kind: 'image'|'docx'|'xlsx'|'pdf', onKey?, dispose? }
+  var lastFocused = null;
+
+  // --- Helpers to create the modal viewer ---
   function ensureStyles() {
-    if (document.getElementById('csfg-styles')) return;
+    if (document.getElementById(CFG.ids.styles)) return;
     var style = document.createElement('style');
-    style.id = 'csfg-styles';
+    style.id = CFG.ids.styles;
     style.type = 'text/css';
     style.textContent = [
-      '#' + modalIds.overlay + '{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2147483000;display:none;}',
-      '#' + modalIds.modal + '{position:fixed;top:5%;left:50%;transform:translateX(-50%);width:88vw;max-width:1200px;height:90vh;background:#fff;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:2147483001;display:none;overflow:hidden;}',
-      '#' + modalIds.header + '{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;}',
-      '#' + modalIds.title + '{font:600 14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-      '#' + modalIds.close + '{background:#ef4444;color:#fff;border:none;border-radius:4px;padding:6px 10px;font:600 12px/1 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;}',
-      '#' + modalIds.body + '{position:absolute;top:44px;bottom:0;left:0;right:0;background:#fff;overflow:auto;padding:0;}',
-      '#' + modalIds.body + ' .csfg-center{display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font:14px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}',
-      '#' + modalIds.body + ' iframe{border:0;width:100%;height:100%;}',
-      '#' + modalIds.body + ' img{max-width:100%;height:auto;display:block;margin:0 auto;}',
+      '#' + CFG.ids.overlay + '{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:' + CFG.z.overlay + ';display:none;}',
+      '#' + CFG.ids.modal + '{position:fixed;top:5%;left:50%;transform:translateX(-50%);width:88vw;max-width:1200px;height:90vh;background:#fff;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:' + CFG.z.modal + ';display:none;overflow:hidden;}',
+      '#' + CFG.ids.header + '{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;}',
+      '#' + CFG.ids.title + '{font:600 14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '#' + CFG.ids.close + '{background:#ef4444;color:#fff;border:none;border-radius:4px;padding:6px 10px;font:600 12px/1 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;}',
+      '#' + CFG.ids.body + '{position:absolute;top:44px;bottom:0;left:0;right:0;background:#fff;overflow:auto;padding:0;}',
+      '#' + CFG.ids.body + ' .csfg-center{display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font:14px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}',
+      '#' + CFG.ids.body + ' iframe{border:0;width:100%;height:100%;}',
+      '#' + CFG.ids.body + ' img{max-width:100%;height:auto;display:block;margin:0 auto;}',
       /* Image viewer specific */
-      '#' + modalIds.body + ' .csfg-imgwrap{position:relative;width:100%;height:100%;overflow:auto;background:#fff;display:flex;align-items:center;justify-content:center;}',
-      '#' + modalIds.body + ' .csfg-imgwrap img{max-width:none;display:block;margin:0;}',
-      '#' + modalIds.body + ' .csfg-zoom-toolbar{position:absolute;top:8px;right:8px;background:rgba(248,250,252,.95);border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:4px;display:flex;gap:6px;z-index:2;}',
-      '#' + modalIds.body + ' .csfg-zoom-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;color:#111827;}',
-      '#' + modalIds.body + ' .csfg-zoom-toolbar button:hover{background:#f3f4f6;}'
+      '#' + CFG.ids.body + ' .csfg-imgwrap{position:relative;width:100%;height:100%;overflow:auto;background:#fff;display:flex;align-items:center;justify-content:center;}',
+      '#' + CFG.ids.body + ' .csfg-imgwrap img{max-width:none;display:block;margin:0;}',
+      '#' + CFG.ids.body + ' .csfg-zoom-toolbar{position:absolute;top:8px;right:8px;background:rgba(248,250,252,.95);border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:4px;display:flex;gap:6px;z-index:' + CFG.z.toolbar + ';align-items:center;}',
+      '#' + CFG.ids.body + ' .csfg-zoom-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;color:#111827;}',
+      '#' + CFG.ids.body + ' .csfg-zoom-toolbar button:hover{background:#f3f4f6;}',
+      '#' + CFG.ids.body + ' .csfg-zoom-label{min-width:48px;text-align:center;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;}',
+      '#' + CFG.ids.body + ' .csfg-imgwrap.grab{cursor:grab;}',
+      '#' + CFG.ids.body + ' .csfg-imgwrap.grabbing{cursor:grabbing;}'
     ].join('\n');
     document.head.appendChild(style);
   }
 
   function ensureModal() {
     ensureStyles();
-    var overlay = document.getElementById(modalIds.overlay);
-    var modal = document.getElementById(modalIds.modal);
+    var overlay = document.getElementById(CFG.ids.overlay);
+    var modal = document.getElementById(CFG.ids.modal);
     if (!overlay) {
       overlay = document.createElement('div');
-      overlay.id = modalIds.overlay;
+      overlay.id = CFG.ids.overlay;
       overlay.onclick = hideModal;
       document.body.appendChild(overlay);
     }
     if (!modal) {
       modal = document.createElement('div');
-      modal.id = modalIds.modal;
-      var header = document.createElement('div'); header.id = modalIds.header;
-      var title = document.createElement('div'); title.id = modalIds.title; title.textContent = '';
-      var close = document.createElement('button'); close.id = modalIds.close; close.textContent = 'Close'; close.onclick = hideModal;
+      modal.id = CFG.ids.modal;
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      var header = document.createElement('div'); header.id = CFG.ids.header;
+      var title = document.createElement('div'); title.id = CFG.ids.title; title.textContent = '';
+      var close = document.createElement('button'); close.id = CFG.ids.close; close.textContent = 'Close'; close.onclick = hideModal;
       header.appendChild(title); header.appendChild(close);
-      var body = document.createElement('div'); body.id = modalIds.body; body.innerHTML = '<div class="csfg-center">Loading…</div>';
+      var body = document.createElement('div'); body.id = CFG.ids.body; body.innerHTML = '<div class="csfg-center">Loading...</div>';
       modal.appendChild(header); modal.appendChild(body);
       document.body.appendChild(modal);
     }
     return modal;
   }
 
+  function onGlobalKey(e) {
+    if (e.key === 'Escape') { hideModal(); return; }
+    if (!currentViewer || !currentViewer.onKey) return;
+    currentViewer.onKey(e);
+  }
+
   function showModal(titleText) {
     var modal = ensureModal();
-    document.getElementById(modalIds.title).textContent = titleText || '';
-    document.getElementById(modalIds.body).innerHTML = '<div class="csfg-center">Loading…</div>';
-    document.getElementById(modalIds.overlay).style.display = 'block';
-    document.getElementById(modalIds.modal).style.display = 'block';
+    lastFocused = document.activeElement;
+    document.getElementById(CFG.ids.title).textContent = titleText || '';
+    document.getElementById(CFG.ids.body).innerHTML = '<div class="csfg-center">Loading...</div>';
+    document.getElementById(CFG.ids.overlay).style.display = 'block';
+    document.getElementById(CFG.ids.modal).style.display = 'block';
+    var closeBtn = document.getElementById(CFG.ids.close);
+    if (closeBtn && closeBtn.focus) closeBtn.focus();
+    document.addEventListener('keydown', onGlobalKey);
   }
 
   function hideModal() {
-    var o = document.getElementById(modalIds.overlay);
-    var m = document.getElementById(modalIds.modal);
+    var o = document.getElementById(CFG.ids.overlay);
+    var m = document.getElementById(CFG.ids.modal);
     if (o) o.style.display = 'none';
     if (m) m.style.display = 'none';
+    document.removeEventListener('keydown', onGlobalKey);
+    if (currentViewer && currentViewer.dispose) try { currentViewer.dispose(); } catch(_) {}
+    currentViewer = null;
+    if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch(_) {} }
+    lastFocused = null;
   }
 
   function setModalContent(nodeOrHtml) {
-    var body = document.getElementById(modalIds.body);
+    var body = document.getElementById(CFG.ids.body);
     if (!body) return;
     if (typeof nodeOrHtml === 'string') body.innerHTML = nodeOrHtml; else { body.innerHTML = ''; body.appendChild(nodeOrHtml); }
   }
@@ -83,7 +120,7 @@
     setModalContent('<div class="csfg-center">' + (message || 'Unable to preview this file.') + '</div>');
   }
 
-  // --- Dynamic script loading ---
+  // --- Dynamic resource loading ---
   var loadedScripts = {};
   function loadScriptOnce(url) {
     return new Promise(function(resolve, reject){
@@ -100,13 +137,19 @@
     });
   }
 
+  function loadStyleOnce(url) {
+    return new Promise(function(resolve, reject){
+      var link = document.querySelector('link[href="' + url.replace(/([.*+?^${}()|[\]\\])/g,'\\$1') + '"]');
+      if (link) return resolve();
+      var l = document.createElement('link');
+      l.rel = 'stylesheet'; l.href = url; l.onload = function(){ resolve(); }; l.onerror = function(){ resolve(); };
+      document.head.appendChild(l);
+    });
+  }
+
   function loadScriptWithFallback(urls) {
     var i = 0;
-    function next() {
-      if (i >= urls.length) return Promise.reject(new Error('All script sources failed'));
-      var url = urls[i++];
-      return loadScriptOnce(url).catch(function(){ return next(); });
-    }
+    function next() { if (i >= urls.length) return Promise.reject(new Error('All script sources failed')); var url = urls[i++]; return loadScriptOnce(url).catch(function(){ return next(); }); }
     return next();
   }
 
@@ -119,11 +162,10 @@
         if (idx > -1) return src.substring(0, idx + 1);
       }
     }
-    // fallback to /docs/
     return '/docs/';
   }
 
-  // --- File viewing logic ---
+  // --- Utilities ---
   function getExtFromName(name) {
     if (!name) return '';
     var q = name.split('?')[0];
@@ -132,7 +174,7 @@
     return i >= 0 ? f.substring(i + 1).toLowerCase() : '';
   }
 
-  function filenameFromLink(link) { // link: <a>
+  function filenameFromLink(link) {
     if (!link) return '';
     var text = (link.textContent || link.innerText || '').trim();
     return text || '';
@@ -140,34 +182,34 @@
 
   function buildViewUrl(href) {
     if (!href) return href;
-    var replaced = false;
-    var out = href.replace(/([?&])Download=1/i, function (m, p1) { replaced = true; return p1 + 'Download=0'; });
-    if (!replaced) out += (out.indexOf('?') >= 0 ? '&' : '?') + 'Download=0';
-    return out;
+    try {
+      var u = new URL(href, window.location.href);
+      u.searchParams.set('Download', '0');
+      return u.toString();
+    } catch (_) {
+      var replaced = false;
+      var out = href.replace(/([?&])Download=1/i, function (m, p1) { replaced = true; return p1 + 'Download=0'; });
+      if (!replaced) out += (out.indexOf('?') >= 0 ? '&' : '?') + 'Download=0';
+      return out;
+    }
   }
 
   function fetchArrayBuffer(url) {
-    return fetch(url, { credentials: 'same-origin' }).then(function(r){
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.arrayBuffer();
-    });
+    return fetch(url, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
   }
 
+  // --- Viewers ---
   function viewWithDocx(url) {
     var base = getScriptBase('CSSynergyX.FileGlance.js');
-    var DOCX_LOCAL = base + 'docx-preview.js';
-    var DOCX_CDN = 'https://unpkg.com/docx-preview@0.4.0/dist/docx-preview.min.js';
-    var JSZIP_CDN = 'https://unpkg.com/jszip/dist/jszip.min.js';
-
-    // Ensure JSZip is loaded first, then docx-preview
-    return loadScriptOnce(JSZIP_CDN)
-      .then(function(){ return loadScriptWithFallback([DOCX_LOCAL, DOCX_CDN]); })
+      var DOCX_LOCAL = base + 'docx-preview.js';
+      var JSZIP_LOCAL = base + 'jszip.min.js';
+      return loadScriptWithFallback([JSZIP_LOCAL, CFG.cdn.jszip])
+      .then(function(){ return loadScriptWithFallback([DOCX_LOCAL, CFG.cdn.docxjs]); })
       .then(function(){
         return fetchArrayBuffer(url).then(function(buf){
           var container = document.createElement('div');
           container.style.padding = '12px';
           setModalContent(container);
-          // global `docx` is provided by docx-preview
           return window.docx && window.docx.renderAsync(buf, container, null, { inWrapper: true })
             .catch(function(){ showError('Failed to render DOCX'); });
         });
@@ -175,12 +217,12 @@
   }
 
   function viewWithXlsx(url) {
-    var XLSX_CDN = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
-    return loadScriptOnce(XLSX_CDN).then(function(){
+      var base = getScriptBase('CSSynergyX.FileGlance.js');
+      var XLSX_LOCAL = base + 'xlsx.full.min.js';
+      return loadScriptWithFallback([XLSX_LOCAL, CFG.cdn.xlsx]).then(function () {
       return fetchArrayBuffer(url).then(function(buf){
         var data = new Uint8Array(buf);
         var wb = window.XLSX.read(data, { type: 'array' });
-        // Render all sheets to HTML
         var html = '';
         for (var i = 0; i < wb.SheetNames.length; i++) {
           var name = wb.SheetNames[i];
@@ -205,24 +247,26 @@
 
   function viewAsImage(url) {
     var wrap = document.createElement('div');
-    wrap.className = 'csfg-imgwrap';
+    wrap.className = 'csfg-imgwrap grab';
 
     var toolbar = document.createElement('div');
     toolbar.className = 'csfg-zoom-toolbar';
 
-    function makeBtn(text, title, onclick){
-      var b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (title) b.title = title; b.onclick = onclick; return b;
-    }
+    function makeBtn(text, title, onclick){ var b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (title) b.title = title; b.onclick = onclick; return b; }
 
     var img = document.createElement('img');
     img.src = url; img.alt = '';
 
     var scale = 1, natW = 0, natH = 0, fitScale = 1;
+    var zoomLabel = document.createElement('span'); zoomLabel.className = 'csfg-zoom-label';
+
+    function updateLabel(){ zoomLabel.textContent = Math.round(scale * 100) + '%'; }
 
     function applyScale(s){
       scale = Math.max(0.05, Math.min(20, s));
       img.style.width = (natW * scale) + 'px';
       img.style.height = (natH * scale) + 'px';
+      updateLabel();
     }
 
     function computeFit(){
@@ -246,125 +290,98 @@
 
     toolbar.appendChild(makeBtn('-', 'Zoom out', zoomOut));
     toolbar.appendChild(makeBtn('+', 'Zoom in', zoomIn));
+    toolbar.appendChild(zoomLabel);
     toolbar.appendChild(makeBtn('100%', 'Actual size', zoomActual));
     toolbar.appendChild(makeBtn('Fit', 'Fit to window', zoomFit));
 
-    var onResize = function(){ if (natW && natH) centerScroll(); };
-    window.addEventListener('resize', onResize);
+    // Drag to pan
+    var dragging = false, startX = 0, startY = 0, startSL = 0, startST = 0;
+    wrap.addEventListener('mousedown', function(e){
+      if (toolbar.contains(e.target)) return;
+      dragging = true; wrap.classList.add('grabbing'); wrap.classList.remove('grab');
+      startX = e.clientX; startY = e.clientY; startSL = wrap.scrollLeft; startST = wrap.scrollTop;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e){ if (!dragging) return; wrap.scrollLeft = startSL - (e.clientX - startX); wrap.scrollTop = startST - (e.clientY - startY); });
+    window.addEventListener('mouseup', function(){ if (!dragging) return; dragging = false; wrap.classList.remove('grabbing'); wrap.classList.add('grab'); });
 
-    img.onload = function(){
-      natW = img.naturalWidth || img.width; natH = img.naturalHeight || img.height;
-      computeFit();
-      applyScale(fitScale);
-      setTimeout(centerScroll, 0);
+    // Keyboard shortcuts for image viewer
+    currentViewer = {
+      kind: 'image',
+      onKey: function(e){
+        if (e.key === '+' || e.key === '=') { zoomIn(); e.preventDefault(); }
+        else if (e.key === '-' || e.key === '_') { zoomOut(); e.preventDefault(); }
+        else if (e.key === '0') { zoomActual(); e.preventDefault(); }
+        else if (e.key === 'f' || e.key === 'F') { zoomFit(); e.preventDefault(); }
+      },
+      dispose: function(){ dragging = false; }
     };
 
-    wrap.addEventListener('wheel', function(e){
-      if (!e.ctrlKey) return; e.preventDefault();
-      var delta = e.deltaY || 0; if (delta > 0) zoomOut(); else zoomIn();
-    }, { passive: false });
+    var onResize = debounce(function(){ if (natW && natH) centerScroll(); }, 100);
+    window.addEventListener('resize', onResize);
 
-    var observer = new MutationObserver(function(){
-      var body = document.getElementById(modalIds.body);
-      if (!body || !body.contains(wrap)) { window.removeEventListener('resize', onResize); observer.disconnect(); }
-    });
+    img.onload = function(){ natW = img.naturalWidth || img.width; natH = img.naturalHeight || img.height; computeFit(); applyScale(fitScale); setTimeout(centerScroll, 0); };
+
+    // Ctrl+wheel to zoom
+    wrap.addEventListener('wheel', function(e){ if (!e.ctrlKey) return; e.preventDefault(); var d = e.deltaY || 0; if (d > 0) zoomOut(); else zoomIn(); }, { passive: false });
+
+    var observer = new MutationObserver(function(){ var body = document.getElementById(CFG.ids.body); if (!body || !body.contains(wrap)) { window.removeEventListener('resize', onResize); observer.disconnect(); } });
     observer.observe(document.body, { childList: true, subtree: true });
 
     wrap.appendChild(toolbar);
     wrap.appendChild(img);
     setModalContent(wrap);
+    updateLabel();
     return Promise.resolve();
   }
+
+  function debounce(fn, ms){ var t; return function(){ clearTimeout(t); var a=arguments, c=this; t=setTimeout(function(){ fn.apply(c,a); }, ms); } }
+
+  // --- Public viewer dispatch ---
+  var viewers = {
+    docx: viewWithDocx,
+    xlsx: viewWithXlsx,
+    xls: viewWithXlsx,
+    pdf: viewInIframe
+  };
+  var imageExts = { png:1, jpg:1, jpeg:1, gif:1, bmp:1, webp:1, svg:1 };
 
   function viewFile(url, displayName) {
     showModal(displayName || '');
     var ext = getExtFromName(displayName || url);
-    if (ext === 'docx') {
-      return viewWithDocx(url).catch(function(){ showError('Failed to preview DOCX.'); });
-    }
-    if (ext === 'xlsx' || ext === 'xls') {
-      return viewWithXlsx(url).catch(function(){ showError('Failed to preview XLSX.'); });
-    }
-    if (['png','jpg','jpeg','gif','bmp','webp','svg'].indexOf(ext) >= 0) {
-      return viewAsImage(url).catch(function(){ showError('Failed to preview image.'); });
-    }
-    if (ext === 'pdf') {
-      return viewInIframe(url).catch(function(){ showError('Failed to preview PDF.'); });
-    }
-    // default fallback
-    hideModal();
-    window.open(url, '_blank');
-    return Promise.resolve();
+    if (viewers[ext]) { return viewers[ext](url).catch(function(){ showError('Failed to preview ' + ext.toUpperCase() + '.'); }); }
+    if (imageExts[ext]) { return viewAsImage(url).catch(function(){ showError('Failed to preview image.'); }); }
+    if (ext === 'pdf') { return viewInIframe(url).catch(function(){ showError('Failed to preview PDF.'); }); }
+    hideModal(); window.open(url, '_blank'); return Promise.resolve();
   }
 
-  function closestTd(el){
-    while (el && el.nodeType === 1 && el.tagName !== 'TD') el = el.parentNode;
-    return (el && el.tagName === 'TD') ? el : null;
-  }
-
-  function findSiblingLinkCell(td){
-    if (!td) return null;
-    var link = null;
-    var prev = td.previousElementSibling;
-    while (prev) {
-      link = prev.querySelector ? prev.querySelector('a') : null;
-      if (link) return link;
-      prev = prev.previousElementSibling;
-    }
-    var next = td.nextElementSibling;
-    while (next) {
-      link = next.querySelector ? next.querySelector('a') : null;
-      if (link) return link;
-      next = next.nextElementSibling;
-    }
-    return null;
-  }
+  // --- Table enhancement ---
+  function closestTd(el){ while (el && el.nodeType === 1 && el.tagName !== 'TD') el = el.parentNode; return (el && el.tagName === 'TD') ? el : null; }
+  function findSiblingLinkCell(td){ if (!td) return null; var link=null; var prev = td.previousElementSibling; while (prev) { link = prev.querySelector ? prev.querySelector('a') : null; if (link) return link; prev = prev.previousElementSibling; } var next = td.nextElementSibling; while (next) { link = next.querySelector ? next.querySelector('a') : null; if (link) return link; next = next.nextElementSibling; } return null; }
 
   function addViewButtons(clientId) {
     function run() {
-      var tbl = document.getElementById(clientId);
-      if (!tbl) return;
-
+      var tbl = document.getElementById(clientId); if (!tbl) return;
       var deleteButtons = tbl.querySelectorAll('button.liButton[onclick^="DeleteAttachment"]');
       for (var i = 0; i < deleteButtons.length; i++) {
         var delBtn = deleteButtons[i];
-
-        // Avoid duplicates if script runs multiple times
         if (delBtn.parentNode && delBtn.parentNode.querySelector('button[data-fg-view="1"]')) continue;
-
-        // Get the <a> in the sibling cell corresponding to this Delete button
         var td = closestTd(delBtn);
-        var link = findSiblingLinkCell(td);
-        if (!link) continue;
-
-        var href = link.getAttribute('href');
-        if (!href) continue;
-
+        var link = findSiblingLinkCell(td); if (!link) continue;
+        var href = link.href || link.getAttribute('href'); if (!href) continue;
         var viewUrl = buildViewUrl(href);
         var name = filenameFromLink(link);
-
-        // Create the View button next to Delete
         var viewBtn = document.createElement('button');
-        viewBtn.type = 'button';
-        viewBtn.className = delBtn.className;
-        viewBtn.setAttribute('data-fg-view', '1');
-        viewBtn.textContent = 'View';
-        viewBtn.style.marginRight = '6px';
-        viewBtn.onclick = (function (u, n) {
-          return function () { viewFile(u, n); return false; };
-        })(viewUrl, name);
-
+        viewBtn.type = 'button'; viewBtn.className = delBtn.className; viewBtn.setAttribute('data-fg-view', '1'); viewBtn.textContent = 'View'; viewBtn.style.marginRight = '6px';
+        viewBtn.onclick = (function (u, n) { return function () { viewFile(u, n); return false; }; })(viewUrl, name);
         delBtn.parentNode.insertBefore(viewBtn, delBtn);
       }
     }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run);
-    } else {
-      run();
-    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', run); } else { run(); }
   }
 
+  // --- Exports ---
   window.CSFileGlance = window.CSFileGlance || {};
   window.CSFileGlance.addViewButtons = addViewButtons;
+  window.CSFileGlance.viewFile = viewFile;
 })(window, document);
