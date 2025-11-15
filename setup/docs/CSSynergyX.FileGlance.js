@@ -42,9 +42,9 @@
             '#' + CFG.ids.body + ' iframe{border:0;width:100%;height:100%;}',
             '#' + CFG.ids.body + ' img{max-width:100%;height:auto;display:block;margin:0 auto;}',
             /* Image viewer specific */
-            '#' + CFG.ids.body + ' .csfg-imgwrap{position:relative;width:100%;height:100%;overflow:auto;background:#fff;display:flex;align-items:center;justify-content:center;}',
-            '#' + CFG.ids.body + ' .csfg-imgwrap img{max-width:none;display:block;margin:0;}',
-            '#' + CFG.ids.body + ' .csfg-zoom-toolbar{position:absolute;top:8px;right:8px;background:rgba(248,250,252,.95);border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:4px;display:flex;gap:6px;z-index:' + CFG.z.toolbar + ';align-items:center;}',
+            '#' + CFG.ids.body + ' .csfg-imgwrap{position:relative;width:100%;height:100%;overflow:auto;background:#fff;}',
+            '#' + CFG.ids.body + ' .csfg-imgwrap img{max-width:none;display:block;margin:0;position:absolute;top:0;left:0;}',
+            '#' + CFG.ids.body + ' .csfg-zoom-toolbar{position:absolute;top:8px;right:24px;background:rgba(248,250,252,.95);border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:4px;display:flex;gap:6px;z-index:' + CFG.z.toolbar + ';align-items:center;pointer-events:auto;}',
             '#' + CFG.ids.body + ' .csfg-zoom-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:4px;padding:4px 8px;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;cursor:pointer;color:#111827;}',
             '#' + CFG.ids.body + ' .csfg-zoom-toolbar button:hover{background:#f3f4f6;}',
             '#' + CFG.ids.body + ' .csfg-zoom-label{min-width:48px;text-align:center;font:600 12px system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;}',
@@ -267,6 +267,7 @@
             img.style.width = (natW * scale) + 'px';
             img.style.height = (natH * scale) + 'px';
             updateLabel();
+            centerScroll();
         }
 
         function computeFit() {
@@ -279,14 +280,23 @@
         function centerScroll() {
             var cw = wrap.clientWidth, ch = wrap.clientHeight;
             var iw = natW * scale, ih = natH * scale;
-            wrap.scrollLeft = Math.max(0, (iw - cw) / 2);
-            wrap.scrollTop = Math.max(0, (ih - ch) / 2);
+            // Set wrapper's scroll dimensions
+            wrap.style.width = '100%';
+            wrap.style.height = '100%';
+            // Position image at center
+            img.style.left = Math.max(0, (cw - iw) / 2) + 'px';
+            img.style.top = Math.max(0, (ch - ih) / 2) + 'px';
+            // If image is larger than viewport, enable scrolling to center
+            if (iw > cw || ih > ch) {
+                wrap.scrollLeft = Math.max(0, (iw - cw) / 2);
+                wrap.scrollTop = Math.max(0, (ih - ch) / 2);
+            }
         }
 
         function zoomIn() { applyScale(scale * 1.25); }
         function zoomOut() { applyScale(scale / 1.25); }
-        function zoomFit() { applyScale(computeFit()); centerScroll(); }
-        function zoomActual() { applyScale(1); centerScroll(); }
+        function zoomFit() { applyScale(computeFit()); }
+        function zoomActual() { applyScale(1); }
 
         toolbar.appendChild(makeBtn('-', 'Zoom out', zoomOut));
         toolbar.appendChild(makeBtn('+', 'Zoom in', zoomIn));
@@ -296,14 +306,37 @@
 
         // Drag to pan
         var dragging = false, startX = 0, startY = 0, startSL = 0, startST = 0;
+        
+        function onMouseMove(e) {
+            if (!dragging) return;
+            var dx = startX - e.clientX;
+            var dy = startY - e.clientY;
+            wrap.scrollLeft = startSL + dx;
+            wrap.scrollTop = startST + dy;
+        }
+        
+        function onMouseUp() {
+            if (!dragging) return;
+            dragging = false;
+            wrap.classList.remove('grabbing');
+            wrap.classList.add('grab');
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        }
+        
         wrap.addEventListener('mousedown', function (e) {
             if (toolbar.contains(e.target)) return;
-            dragging = true; wrap.classList.add('grabbing'); wrap.classList.remove('grab');
-            startX = e.clientX; startY = e.clientY; startSL = wrap.scrollLeft; startST = wrap.scrollTop;
+            dragging = true;
+            wrap.classList.add('grabbing');
+            wrap.classList.remove('grab');
+            startX = e.clientX;
+            startY = e.clientY;
+            startSL = wrap.scrollLeft;
+            startST = wrap.scrollTop;
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
             e.preventDefault();
         });
-        window.addEventListener('mousemove', function (e) { if (!dragging) return; wrap.scrollLeft = startSL - (e.clientX - startX); wrap.scrollTop = startST - (e.clientY - startY); });
-        window.addEventListener('mouseup', function () { if (!dragging) return; dragging = false; wrap.classList.remove('grabbing'); wrap.classList.add('grab'); });
 
         // Keyboard shortcuts for image viewer
         currentViewer = {
@@ -314,7 +347,11 @@
                 else if (e.key === '0') { zoomActual(); e.preventDefault(); }
                 else if (e.key === 'f' || e.key === 'F') { zoomFit(); e.preventDefault(); }
             },
-            dispose: function () { dragging = false; }
+            dispose: function () { 
+                dragging = false;
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+            }
         };
 
         var onResize = debounce(function () { if (natW && natH) centerScroll(); }, 100);
@@ -328,9 +365,11 @@
         var observer = new MutationObserver(function () { var body = document.getElementById(CFG.ids.body); if (!body || !body.contains(wrap)) { window.removeEventListener('resize', onResize); observer.disconnect(); } });
         observer.observe(document.body, { childList: true, subtree: true });
 
-        wrap.appendChild(toolbar);
         wrap.appendChild(img);
         setModalContent(wrap);
+        // Append toolbar to body (outside wrap) so it stays fixed at top-right
+        var body = document.getElementById(CFG.ids.body);
+        if (body) body.appendChild(toolbar);
         updateLabel();
         return Promise.resolve();
     }
