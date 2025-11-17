@@ -280,9 +280,6 @@
         function centerScroll() {
             var cw = wrap.clientWidth, ch = wrap.clientHeight;
             var iw = natW * scale, ih = natH * scale;
-            // Set wrapper's scroll dimensions
-            wrap.style.width = '100%';
-            wrap.style.height = '100%';
             // Position image at center
             img.style.left = Math.max(0, (cw - iw) / 2) + 'px';
             img.style.top = Math.max(0, (ch - ih) / 2) + 'px';
@@ -325,7 +322,6 @@
         }
         
         wrap.addEventListener('mousedown', function (e) {
-            if (toolbar.contains(e.target)) return;
             dragging = true;
             wrap.classList.add('grabbing');
             wrap.classList.remove('grab');
